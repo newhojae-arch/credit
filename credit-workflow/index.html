@@ -223,6 +223,10 @@
         </div>
         <div class="grid">
           <label class="field">
+            <span class="field__label">Gemini 모델 <em>· 키를 저장하면 최신 모델로 맞춰집니다</em></span>
+            <select id="i_gemini_model" class="select"></select>
+          </label>
+          <label class="field">
             <span class="field__label">Gemini API 키 <em>· 필수 · 등기부 판독</em></span>
             <input type="password" id="i_gemini_key" class="input" autocomplete="off" spellcheck="false" placeholder="AIza…">
           </label>
@@ -230,13 +234,10 @@
             <span class="field__label">국토부 서비스키 <em>· 선택 · 없으면 호갱노노 시세 사용</em></span>
             <input type="password" id="i_molit_key" class="input" autocomplete="off" spellcheck="false" placeholder="data.go.kr 인증키">
           </label>
-          <label class="field">
-            <span class="field__label">Gemini 모델 <em>· 비우면 기본값</em></span>
-            <input type="text" id="i_gemini_model" class="input mono" autocomplete="off" spellcheck="false" placeholder="gemini-3.5-flash-lite">
-          </label>
         </div>
         <div class="cluster mt-lg">
           <button type="button" class="btn btn--secondary" id="btn_save_keys">키 저장</button>
+          <button type="button" class="btn" id="btn_reload_models">모델 목록 새로고침</button>
           <button type="button" class="btn" id="btn_clear_keys">지우기</button>
         </div>
         <p class="field__hint mt-md">

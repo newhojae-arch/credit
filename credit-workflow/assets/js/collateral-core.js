@@ -19,10 +19,44 @@
 (function(){
 "use strict";
 
-/* 파이썬과 동일한 기본값. 화면에서 바꿀 수 있다 —
-   모델명이 맞지 않으면 판독이 통째로 실패하므로 코드 수정 없이 교체 가능해야 한다. */
-var DEFAULT_MODEL = "gemini-3.5-flash-lite";
-var MODEL_NAME = DEFAULT_MODEL;
+/* 파이썬이 쓰던 값. 목록을 못 불러왔을 때의 안전한 폴백이다.
+   실제 기본값은 listModels() 로 받아온 목록에서 가장 최신 것을 고른다 —
+   모델 ID 를 코드에 박아두면 새 모델이 나올 때마다 어긋난다. */
+var FALLBACK_MODEL = "gemini-3.5-flash-lite";
+var MODEL_NAME = FALLBACK_MODEL;
+
+/* 사용 가능한 모델을 Gemini 에서 직접 받아온다.
+   generateContent 를 지원하고 이미지(vision)를 받는 것만 남긴다. */
+async function listModels(apiKey){
+  var res = await fetch(GEMINI_ENDPOINT.replace(/\/models\/$/, "/models") + "?key=" +
+                        encodeURIComponent(apiKey) + "&pageSize=200");
+  if (!res.ok) throw new Error("HTTP " + res.status + " " + (await res.text()).slice(0, 200));
+  var data = await res.json();
+  return (data.models || [])
+    .filter(function(m){
+      var methods = m.supportedGenerationMethods || [];
+      if (methods.indexOf("generateContent") < 0) return false;
+      var id = String(m.name || "").replace(/^models\//, "");
+      /* 임베딩·검색전용 모델은 제외 */
+      return /^gemini-/.test(id) && !/embedding|aqa|imagen|veo|tts|image-gen/i.test(id);
+    })
+    .map(function(m){
+      var id = String(m.name).replace(/^models\//, "");
+      return {id: id, label: m.displayName || id, rank: rankModel(id)};
+    })
+    .sort(function(a, b){ return b.rank - a.rank; });
+}
+
+/* "최신" 판정: 세대(3.5 > 2.5)가 우선, 같은 세대면 flash > flash-lite > pro.
+   문서 판독은 이미지 입력이 많아 flash 계열이 비용·정확도 균형이 낫다.
+   preview/exp 는 안정성이 떨어져 뒤로 민다. */
+function rankModel(id){
+  var m = /gemini-(\d+)(?:\.(\d+))?/.exec(id);
+  var gen = m ? parseInt(m[1], 10) * 100 + (m[2] ? parseInt(m[2], 10) : 0) : 0;
+  var tier = /flash-lite/.test(id) ? 2 : /flash/.test(id) ? 3 : /pro/.test(id) ? 1 : 0;
+  var stable = /preview|exp|latest/i.test(id) ? 0 : 1;
+  return gen * 1000 + stable * 100 + tier * 10;
+}
 var CLASSIFY_BATCH_SIZE = 15;
 var DEFAULT_HAMMER_RATE = 0.80;
 var GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/";
@@ -812,9 +846,11 @@ async function runPipeline(opts){
 
 window.CollateralCore = {
   DEFAULT_HAMMER_RATE: DEFAULT_HAMMER_RATE,
-  DEFAULT_MODEL: DEFAULT_MODEL,
+  FALLBACK_MODEL: FALLBACK_MODEL,
+  listModels: listModels,
+  rankModel: rankModel,
   getModel: function(){ return MODEL_NAME; },
-  setModel: function(m){ MODEL_NAME = (m || "").trim() || DEFAULT_MODEL; },
+  setModel: function(m){ MODEL_NAME = (m || "").trim() || FALLBACK_MODEL; },
   runPipeline: runPipeline,
   matchHammerRate: matchHammerRate,
   extractBuildingDong: extractBuildingDong,

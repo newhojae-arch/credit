@@ -24,11 +24,58 @@ function saveKeys(k){ storage.set(KEY_STORE, k); }
 
 function syncKeyFields(){
   const k = loadKeys();
-  if ($('i_gemini_key'))   $('i_gemini_key').value   = k.gemini || '';
-  if ($('i_molit_key'))    $('i_molit_key').value    = k.molit  || '';
-  if ($('i_gemini_model')) $('i_gemini_model').value = k.model  || '';
-  window.CollateralCore.setModel(k.model);
+  if ($('i_gemini_key')) $('i_gemini_key').value = k.gemini || '';
+  if ($('i_molit_key'))  $('i_molit_key').value  = k.molit  || '';
+  setModelOptions(k.models, k.model);
   updateKeyStatus();
+}
+
+/* ── 모델 드롭다운 ──
+   목록은 Gemini API 에서 직접 받아온다(코드에 모델 ID 를 박아두면 새 모델이
+   나올 때마다 어긋난다). 아직 못 받았으면 폴백 하나만 보여준다. */
+function setModelOptions(models, selected){
+  const sel = $('i_gemini_model');
+  if (!sel) return;
+  const C = window.CollateralCore;
+  const list = (models && models.length) ? models : [{id: C.FALLBACK_MODEL, label: C.FALLBACK_MODEL}];
+  /* 저장된 선택이 목록에 없으면(모델이 없어졌거나 목록을 못 받았으면) 맨 위 = 최신 */
+  const pick = (selected && list.some(m => m.id === selected)) ? selected : list[0].id;
+
+  sel.innerHTML = '';
+  list.forEach((m, i) => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.id + (i === 0 ? '  (최신)' : '');
+    if (m.id === pick) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  C.setModel(pick);
+}
+
+/* 저장된 키로 모델 목록을 받아 드롭다운을 채운다 */
+async function reloadModels(quiet){
+  const k = loadKeys();
+  if (!k.gemini){
+    if (!quiet) flag('<div class="callout callout--warn">Gemini API 키를 먼저 저장하십시오.</div>');
+    return;
+  }
+  setSt('st_keys','run','모델 목록 불러오는 중…');
+  try{
+    const models = await window.CollateralCore.listModels(k.gemini);
+    if (!models.length) throw new Error('사용 가능한 모델이 없습니다');
+    /* 목록이 바뀌었으니 저장된 선택이 여전히 유효한지 setModelOptions 가 판단한다 */
+    saveKeys(Object.assign({}, k, {models: models}));
+    setModelOptions(models, k.model);
+    updateKeyStatus();
+    if (!quiet)
+      flag('<div class="callout">모델 ' + models.length + '개를 불러왔습니다. ' +
+           '최신 모델 <span class="mono">' + esc($('i_gemini_model').value) + '</span> 으로 맞췄습니다.</div>');
+  }catch(e){
+    updateKeyStatus();
+    if (!quiet)
+      flag('<div class="callout callout--warn"><b>모델 목록을 불러오지 못했습니다.</b> ' +
+           esc(e.message) + '<br>Gemini 키가 올바른지 확인하십시오.</div>');
+  }
 }
 function updateKeyStatus(){
   const k = loadKeys();
@@ -255,14 +302,28 @@ if ($('btn_collateral_eval')) $('btn_collateral_eval').addEventListener('click',
 if ($('btn_collateral_report')) $('btn_collateral_report').addEventListener('click', printReport);
 
 if ($('btn_save_keys')) $('btn_save_keys').addEventListener('click', () => {
+  const prev = loadKeys();
+  const geminiKey = $('i_gemini_key').value.trim();
+  const keyChanged = geminiKey !== (prev.gemini || '');
   saveKeys({
-    gemini: $('i_gemini_key').value.trim(),
+    gemini: geminiKey,
     molit:  $('i_molit_key').value.trim(),
-    model:  $('i_gemini_model').value.trim()
+    model:  $('i_gemini_model').value,
+    models: prev.models
   });
-  window.CollateralCore.setModel($('i_gemini_model').value.trim());
+  window.CollateralCore.setModel($('i_gemini_model').value);
   updateKeyStatus();
   flag('<div class="callout">API 키를 이 브라우저에 저장했습니다. 서버로 전송되지 않습니다.</div>');
+  /* 키가 새로 들어왔으면 그 키로 쓸 수 있는 모델을 바로 받아 최신으로 맞춘다 */
+  if (geminiKey && keyChanged) reloadModels(false);
+});
+if ($('btn_reload_models')) $('btn_reload_models').addEventListener('click', () => reloadModels(false));
+
+/* 드롭다운에서 고른 모델을 바로 반영·저장 */
+if ($('i_gemini_model')) $('i_gemini_model').addEventListener('change', () => {
+  const k = loadKeys();
+  saveKeys(Object.assign({}, k, {model: $('i_gemini_model').value}));
+  window.CollateralCore.setModel($('i_gemini_model').value);
 });
 if ($('btn_clear_keys')) $('btn_clear_keys').addEventListener('click', () => {
   storage.remove(KEY_STORE);
