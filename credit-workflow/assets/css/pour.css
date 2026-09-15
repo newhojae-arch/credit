@@ -1,0 +1,46 @@
+/* ══════════════════════════════════════════════════════════════
+   pour.css — 타설계획 페이지 고유 레이아웃
+   카드·필드·표·버튼은 전부 components.css 소유다. 여기 남은 것은
+   월 컬럼 폭 처리와 셀 안 파생값 3줄의 높이 고정뿐.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 타설계획 표 ──
+   타설기간이 길어져 월 컬럼이 많아져도 표가 화면폭에 눌려 찌그러지지 않도록,
+   폭을 콘텐츠 기준으로 늘리고(가로 스크롤은 .table-scroll 이 처리) 각 칸에
+   최소 너비를 준다. 셀 안 3줄(입력·매출채권·월중여신)의 높이를 고정해
+   행마다 높이가 달라지지 않게 한다. */
+#ts_tbl{ width:auto; min-width:100% }
+#ts_tbl th:first-child,
+#ts_tbl td:first-child{ min-width:180px }
+#ts_tbl th.num,
+#ts_tbl td.num{ min-width:116px }
+/* 비고 열은 클래스가 없으면 내용만큼 줄어들어 입력칸이 알약처럼 찌그러진다 */
+#ts_tbl th.ts-note-col,
+#ts_tbl td.ts-note-col{ min-width:140px }
+#ts_tbl td{ vertical-align:top }
+
+/* 월 칸: 입력 아래에 매출채권·월중여신을 작게 붙인다 */
+.ts-derived{
+  height:18px;
+  margin-top:2px;
+  font-size:var(--t-12);
+  line-height:18px;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  color:var(--text-dim);
+  white-space:nowrap;
+}
+.ts-derived--loan{ color:var(--accent) }
+/* 그 현장의 최고 월중여신 달 */
+.ts-derived--peak{ color:var(--danger); font-weight:var(--w-medium) }
+
+/* 현장명 칸 아래 범례 — 위 두 줄과 같은 높이로 맞춰 첫 열이 어긋나지 않게 */
+.ts-legend{ margin-top:2px }
+.ts-legend span{
+  display:block;
+  height:18px;
+  font-size:var(--t-12);
+  line-height:18px;
+  color:var(--text-dim);
+}
+.ts-legend .is-loan{ color:var(--accent) }
