@@ -81,7 +81,7 @@
         <h2 class="display-sm mt-md">담보가치 평가</h2>
         <p class="body-sm dim mt-md">등기부등본 PDF를 올리면 물건지를 자동 감지해 선순위 합계와 최근 실거래가로 담보가치를 계산합니다.</p>
         <ul class="body-sm muted list mt-lg">
-          <li>등기부 자동 분석 (streamlit-app API)</li>
+          <li>등기부 자동 판독 (Gemini) · 백엔드 불필요</li>
           <li>국토부 · 호갱노노 실거래가 조회</li>
           <li>지역별 낙찰가율 적용 · PDF 리포트</li>
         </ul>
@@ -115,7 +115,7 @@
 
     <p class="body-sm muted mt-3xl">
       신용거래 심사 · 타설계획 · 현장 현황은 브라우저 안에서만 동작하며 업로드한 PDF나 입력값을 어디로도 보내지 않습니다.
-      담보가치 평가만 별도 백엔드(streamlit-app API)를 호출합니다.
+      담보가치 평가는 Gemini · 국토부 · 호갱노노를 브라우저에서 직접 호출하며, API 키는 이 브라우저에만 저장됩니다.
     </p>
   </div>
 </main>
@@ -213,9 +213,35 @@
     <div class="band">
       <p class="eyebrow eyebrow--mute">삼표산업 · 외상거래 여신심사</p>
       <h1 class="display-lg mt-md">담보가치 평가</h1>
-      <p class="lede mt-lg">등기부등본 PDF를 업로드하면 별도 백엔드(streamlit-app API)가 물건지를 자동 감지하고, 선순위(근저당권) 합계 · 최근 실거래가 · 담보가치를 계산해 돌려줍니다.</p>
+      <p class="lede mt-lg">등기부등본 PDF를 올리면 물건지를 자동으로 감지해 선순위(근저당권) 합계 · 최근 실거래가 · 담보가치를 계산합니다. 별도 서버 없이 이 브라우저 안에서 전부 처리합니다.</p>
     </div>
-      <div class="dropzone" id="collateralDrop" tabindex="0" role="button" aria-label="부동산 등기부등본 PDF 업로드">
+      <div class="card card--soft">
+        <div class="card__head">
+          <span class="eyebrow eyebrow--sm">API 키</span>
+          <span class="hint">이 브라우저에만 저장됩니다 · 서버로 전송하지 않습니다</span>
+          <span class="status" id="st_keys"></span>
+        </div>
+        <div class="grid">
+          <label class="field">
+            <span class="field__label">Gemini API 키 <em>· 필수 · 등기부 판독</em></span>
+            <input type="password" id="i_gemini_key" class="input" autocomplete="off" spellcheck="false" placeholder="AIza…">
+          </label>
+          <label class="field">
+            <span class="field__label">국토부 서비스키 <em>· 선택 · 없으면 호갱노노 시세 사용</em></span>
+            <input type="password" id="i_molit_key" class="input" autocomplete="off" spellcheck="false" placeholder="data.go.kr 인증키">
+          </label>
+        </div>
+        <div class="cluster mt-lg">
+          <button type="button" class="btn btn--secondary" id="btn_save_keys">키 저장</button>
+          <button type="button" class="btn" id="btn_clear_keys">지우기</button>
+        </div>
+        <p class="field__hint mt-md">
+          Gemini 키는 <span class="mono">aistudio.google.com/apikey</span>,
+          국토부 서비스키는 <span class="mono">data.go.kr</span> 의 «아파트 매매 실거래가 상세자료» 에서 발급합니다.
+        </p>
+      </div>
+
+      <div class="dropzone mt-lg" id="collateralDrop" tabindex="0" role="button" aria-label="부동산 등기부등본 PDF 업로드">
         <div>
           <div class="dropzone__title">부동산 등기부등본(PDF)를 여기에 놓으세요</div>
           <div class="dropzone__hint" id="f_collateral_pdf_got">클릭해서 파일을 고를 수도 있습니다</div>
@@ -241,6 +267,8 @@
         </div>
       </div>
 
+      <pre class="runlog mt-lg" id="collateral_log" hidden></pre>
+
       <div class="table-scroll mt-lg">
         <table class="table" id="collateral_tbl">
           <thead><tr>
@@ -258,7 +286,7 @@
         </div>
       </div>
       <div id="collateral_flag"></div>
-    <p class="body-sm muted mt-xl mb-4xl">이 화면은 결과를 표시만 하며, 분석 로직은 <span class="mono">streamlit-app/</span> 폴더의 API 서버에서 수행됩니다. 네 화면 중 외부 백엔드를 호출하는 것은 여기뿐입니다.</p>
+    <p class="body-sm muted mt-xl mb-4xl">등기부 판독은 Gemini, 시세는 국토부 실거래가(없으면 호갱노노)를 씁니다. 담보가치 = 실거래가 × 낙찰가율 − 선순위이며, 낙찰가율은 법원 관할구역별 기준표에서 물건지 주소로 자동 매칭합니다. 업로드한 PDF는 Gemini 판독 외에는 어디로도 전송되지 않습니다.</p>
   </div>
 </main>
 
@@ -440,6 +468,8 @@
      신용 페이지에 처음 들어올 때 assets/vendor/ 에서 지연 로드한다. -->
 <script src="assets/js/utils.js" defer></script>
 <script src="assets/js/credit.js" defer></script>
+<script src="assets/data/hammer-rates.js" defer></script>
+<script src="assets/js/collateral-core.js" defer></script>
 <script src="assets/js/collateral.js" defer></script>
 <script src="assets/js/pour.js" defer></script>
 <script src="assets/js/site.js" defer></script>

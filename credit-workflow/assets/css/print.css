@@ -37,6 +37,8 @@
   #ts_print_area td.pr-site{ text-align:center; font-weight:600 }
   #ts_print_area td.pr-rowlabel{ text-align:left; color:#555; white-space:nowrap; background:#f7f7f7 }
   #ts_print_area td.pr-rowlabel.pr-loan{ color:#a4241a }
+  /* 담보가치 리포트: 물건지 주소만 왼쪽 정렬 (나머지 숫자는 가운데) */
+  #ts_print_area td.pr-left{ text-align:left }
   #ts_print_area .pr-total{ margin-top:16px; font-size:13px; font-weight:700 }
   #ts_print_area .pr-foot{ margin-top:10px; font-size:11px; color:#333 }
 

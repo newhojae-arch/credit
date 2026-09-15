@@ -135,7 +135,28 @@ function loadScripts(srcs){
   }, Promise.resolve());
 }
 
+/* ───────────────────── pdf.js 지연 로드 ─────────────────────
+   신용 채점과 담보가치 평가 둘 다 PDF 를 읽는다. 1.5MB 라 필요할 때만 받고,
+   한 번 받으면 공유한다.
+
+   주의 — GlobalWorkerOptions.workerSrc 를 설정하지 않는다. worker 를 일반
+   <script> 로 올려 globalThis.pdfjsWorker.WorkerMessageHandler 를 노출시키면
+   pdf.js 가 이를 감지해 fake worker(메인 스레드) 모드로 돈다. 이것이 file://
+   로 열어도 동작하는 이유다. 진짜 Worker 로 바꾸면 file:// 에서 CORS 로 깨진다. */
+var PDFJS_FILES = ["assets/vendor/pdf.min.js", "assets/vendor/pdf.worker.min.js"];
+var pdfjsReady = null;
+function ensurePdfjs(){
+  if (!pdfjsReady){
+    pdfjsReady = loadScripts(PDFJS_FILES).catch(function(e){
+      pdfjsReady = null;       /* 실패하면 다음 시도에서 다시 받을 수 있게 */
+      throw e;
+    });
+  }
+  return pdfjsReady;
+}
+
 window.App = {
+  ensurePdfjs: ensurePdfjs,
   DASH: DASH,
   $: $, $one: $one, $all: $all, el: el, esc: esc,
   fmtInt: fmtInt, fmtFixed: fmtFixed, fmtEok: fmtEok, fmtPct: fmtPct, parseNum: parseNum,

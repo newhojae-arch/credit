@@ -23,3 +23,22 @@
 }
 /* 상세 표는 조밀하게 — 기본 64px 행 높이를 쓰지 않는다 */
 .trade-detail .table tbody td{ height:auto }
+
+/* ── 진행 로그 ──
+   파이썬 파이프라인이 콘솔에 찍던 것을 화면에 그대로 보여준다.
+   분석이 수십 초 걸려서, 뭐가 진행 중인지 보이지 않으면 멈춘 것처럼 느껴진다. */
+.runlog{
+  max-height:280px;
+  margin:0;
+  padding:var(--sp-4) var(--sp-5);
+  overflow:auto;
+  background:var(--bg-alt);
+  border:1px solid var(--border);
+  border-radius:var(--r-card);
+  font-family:var(--font-mono);
+  font-size:var(--t-12);
+  line-height:1.65;
+  color:var(--text-secondary);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}

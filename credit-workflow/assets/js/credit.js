@@ -31,18 +31,8 @@
    를 노출시키면 pdf.js 가 이를 감지해 fake worker(메인 스레드) 모드로 돈다.
    이것이 file:// 로 열어도 동작하는 이유다. 진짜 Worker 로 바꾸면
    file:// 에서 CORS 로 깨진다. lib → worker 순서도 그대로 지킨다. */
-var VENDOR = ["assets/vendor/pdf.min.js", "assets/vendor/pdf.worker.min.js"];
-var pdfjsReady = null;
-
-function ensurePdfjs(){
-  if (!pdfjsReady){
-    pdfjsReady = App.loadScripts(VENDOR).catch(function(e){
-      pdfjsReady = null;        /* 실패하면 다음 업로드 때 다시 시도할 수 있게 비운다 */
-      throw e;
-    });
-  }
-  return pdfjsReady;
-}
+/* pdf.js 로더는 utils.js(App) 소유다 — 담보가치 평가 화면과 함께 쓴다 */
+var ensurePdfjs = App.ensurePdfjs;
 
 /* shell.js 가 신용 페이지 진입 시 호출한다. 여기서의 실패는 조용히 넘기고
    실제 업로드 시점의 await ensurePdfjs() 가 사용자에게 보고한다. */
