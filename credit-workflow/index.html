@@ -215,10 +215,12 @@
       <h1 class="display-lg mt-md">담보가치 평가</h1>
       <p class="lede mt-lg">등기부등본 PDF를 업로드하면 별도 백엔드(streamlit-app API)가 물건지를 자동 감지하고, 선순위(근저당권) 합계 · 최근 실거래가 · 담보가치를 계산해 돌려줍니다.</p>
     </div>
-      <div class="filefield w-file">
-        <span class="field__label">부동산 등기부등본 (PDF)</span>
-        <input type="file" id="f_collateral_pdf" accept=".pdf">
-        <span class="filefield__got" id="f_collateral_pdf_got"></span>
+      <div class="dropzone" id="collateralDrop" tabindex="0" role="button" aria-label="부동산 등기부등본 PDF 업로드">
+        <div>
+          <div class="dropzone__title">부동산 등기부등본(PDF)를 여기에 놓으세요</div>
+          <div class="dropzone__hint" id="f_collateral_pdf_got">클릭해서 파일을 고를 수도 있습니다</div>
+        </div>
+        <input type="file" id="f_collateral_pdf" accept=".pdf" hidden>
       </div>
 
       <div class="card card--soft mt-lg">

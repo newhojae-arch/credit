@@ -54,7 +54,7 @@
 .body-md{ font-size:var(--t-15); line-height:1.6 }
 .body-sm{ font-size:var(--t-14); line-height:1.55 }
 
-.lede{ font-size:var(--t-17); line-height:1.6; color:var(--text-muted); max-width:52ch }
+.lede{ font-size:var(--t-17); line-height:1.6; color:var(--text-muted) }
 .muted{ color:var(--text-muted) }
 .dim{ color:var(--text-dim) }
 
