@@ -1,0 +1,65 @@
+# ══════════════════════════════════════════════════════════════
+#  credit-workflow 를 GitHub Pages 로 배포한다.
+#
+#  사이트가 저장소 루트가 아니라 credit-workflow/ 안에 있어서,
+#  "Deploy from a branch"(루트 또는 /docs 만 지원)를 쓸 수 없다.
+#  그래서 Actions 로 필요한 파일만 추려 올린다.
+#
+#  참고: 이 파일은 CLAUDE.md 의 "루트에 새 파일/폴더를 만들지 마세요"
+#  규칙에 대한 유일한 예외다. GitHub Actions 워크플로우는 반드시
+#  .github/workflows/ 에 있어야 인식되므로 다른 위치가 없다.
+#  서비스 코드가 아니라 배포 설정이며, credit-workflow/ 만 다룬다.
+# ══════════════════════════════════════════════════════════════
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    # 사이트나 이 워크플로우가 바뀔 때만 돈다 (streamlit-app 수정으로는 배포 안 함)
+    paths:
+      - 'credit-workflow/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:   # Actions 탭에서 수동 실행
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 겹치지 않게. 진행 중인 배포를 취소하지는 않는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 배포할 파일만 _site 로 추린다
+        # 저장소에는 원본 HTML 2개와 디자인 소스(.ai/.jpg/DESIGN.md)도 있지만
+        # 그건 참고 자료라 웹에 띄우지 않는다. 실제 산출물만 올린다.
+        run: |
+          mkdir -p _site
+          cp credit-workflow/index.html _site/
+          cp -r credit-workflow/assets   _site/
+          # Jekyll 전처리를 건너뛴다 (_ 로 시작하는 파일이 생겨도 안전)
+          touch _site/.nojekyll
+          echo "--- 배포 대상 ---"
+          find _site -type f | sort
+
+      - uses: actions/configure-pages@v5
+        with:
+          # 저장소에 Pages 가 아직 꺼져 있으면 여기서 켠다
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
