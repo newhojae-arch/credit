@@ -24,8 +24,10 @@ function saveKeys(k){ storage.set(KEY_STORE, k); }
 
 function syncKeyFields(){
   const k = loadKeys();
-  if ($('i_gemini_key')) $('i_gemini_key').value = k.gemini || '';
-  if ($('i_molit_key'))  $('i_molit_key').value  = k.molit  || '';
+  if ($('i_gemini_key'))   $('i_gemini_key').value   = k.gemini || '';
+  if ($('i_molit_key'))    $('i_molit_key').value    = k.molit  || '';
+  if ($('i_gemini_model')) $('i_gemini_model').value = k.model  || '';
+  window.CollateralCore.setModel(k.model);
   updateKeyStatus();
 }
 function updateKeyStatus(){
@@ -177,6 +179,7 @@ async function evaluateCollateral(){
     const doc = await pdfjsLib.getDocument({data: new Uint8Array(buf), isEvalSupported:false}).promise;
     logLine('[준비] PDF ' + doc.numPages + '페이지');
 
+    logLine('[준비] Gemini 모델: ' + window.CollateralCore.getModel());
     const rateTable = window.HAMMER_RATE_TABLE || null;
     if (rateTable) logLine('[준비] 낙찰가율 기준표 ' + rateTable.length + '개 항목');
 
@@ -252,7 +255,12 @@ if ($('btn_collateral_eval')) $('btn_collateral_eval').addEventListener('click',
 if ($('btn_collateral_report')) $('btn_collateral_report').addEventListener('click', printReport);
 
 if ($('btn_save_keys')) $('btn_save_keys').addEventListener('click', () => {
-  saveKeys({gemini: $('i_gemini_key').value.trim(), molit: $('i_molit_key').value.trim()});
+  saveKeys({
+    gemini: $('i_gemini_key').value.trim(),
+    molit:  $('i_molit_key').value.trim(),
+    model:  $('i_gemini_model').value.trim()
+  });
+  window.CollateralCore.setModel($('i_gemini_model').value.trim());
   updateKeyStatus();
   flag('<div class="callout">API 키를 이 브라우저에 저장했습니다. 서버로 전송되지 않습니다.</div>');
 });

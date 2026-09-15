@@ -230,6 +230,10 @@
             <span class="field__label">국토부 서비스키 <em>· 선택 · 없으면 호갱노노 시세 사용</em></span>
             <input type="password" id="i_molit_key" class="input" autocomplete="off" spellcheck="false" placeholder="data.go.kr 인증키">
           </label>
+          <label class="field">
+            <span class="field__label">Gemini 모델 <em>· 비우면 기본값</em></span>
+            <input type="text" id="i_gemini_model" class="input mono" autocomplete="off" spellcheck="false" placeholder="gemini-3.5-flash-lite">
+          </label>
         </div>
         <div class="cluster mt-lg">
           <button type="button" class="btn btn--secondary" id="btn_save_keys">키 저장</button>
@@ -238,6 +242,7 @@
         <p class="field__hint mt-md">
           Gemini 키는 <span class="mono">aistudio.google.com/apikey</span>,
           국토부 서비스키는 <span class="mono">data.go.kr</span> 의 «아파트 매매 실거래가 상세자료» 에서 발급합니다.
+          국토부는 <b>Decoding 키</b>와 <b>Encoding 키</b> 둘 다 받습니다 — 어느 쪽을 넣어도 됩니다.
         </p>
       </div>
 

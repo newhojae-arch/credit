@@ -19,8 +19,10 @@
 (function(){
 "use strict";
 
-/* 파이썬과 동일 */
-var MODEL_NAME = "gemini-3.5-flash-lite";
+/* 파이썬과 동일한 기본값. 화면에서 바꿀 수 있다 —
+   모델명이 맞지 않으면 판독이 통째로 실패하므로 코드 수정 없이 교체 가능해야 한다. */
+var DEFAULT_MODEL = "gemini-3.5-flash-lite";
+var MODEL_NAME = DEFAULT_MODEL;
 var CLASSIFY_BATCH_SIZE = 15;
 var DEFAULT_HAMMER_RATE = 0.80;
 var GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/";
@@ -41,7 +43,17 @@ async function geminiCall(apiKey, parts, log, maxRetries){
       var res = await fetch(GEMINI_ENDPOINT + MODEL_NAME + ":generateContent?key=" + encodeURIComponent(apiKey), {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({contents: [{parts: parts}]})
+        body: JSON.stringify({
+          contents: [{parts: parts}],
+          /* JSON 만 나오게 못박는다. 이게 없으면 ```json 펜스나 설명문이 섞여 와
+             파싱이 실패한다. 추출 작업이라 온도는 0 으로 고정. */
+          /* maxOutputTokens 는 넣지 않는다 — 모델별 상한을 넘기면 400 이 난다.
+             기본값(모델 최대)을 그대로 쓴다. */
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: "application/json"
+          }
+        })
       });
       if (!res.ok){
         var body = await res.text();
@@ -69,11 +81,18 @@ function imagePart(base64png){
 
 /* 파이썬의 re.search(r'\[.*\]', text, re.DOTALL) 와 동일한 의도 */
 function extractJson(text, kind){
+  /* responseMimeType 을 걸어도 만약을 대비해 앞뒤 잡음을 걷어내고 파싱한다 */
+  try{ return JSON.parse(text); }catch(e){}
   var open = kind === "array" ? "[" : "{";
   var close = kind === "array" ? "]" : "}";
   var s = text.indexOf(open), e = text.lastIndexOf(close);
   if (s < 0 || e <= s) return null;
   try{ return JSON.parse(text.slice(s, e + 1)); }catch(err){ return null; }
+}
+/* 파싱이 실패했을 때 무엇이 왔는지 보여준다. 이게 없으면 원인을 알 수 없다. */
+function logBadResponse(log, label, text){
+  log("[경고] " + label + " JSON 파싱 실패 · 응답 " + text.length + "자");
+  log("       받은 내용: " + text.slice(0, 300).replace(/\s+/g, " "));
 }
 
 /* ═══════════════════ PDF 렌더링 ═══════════════════ */
@@ -134,7 +153,7 @@ async function classifyPages(apiKey, doc, log){
     var text = await geminiCall(apiKey, parts, log);
     var batch = extractJson(text, "array");
     if (batch) all = all.concat(batch);
-    else log("[경고] 배치 " + (start + 1) + "~" + end + " JSON 파싱 실패");
+    else logBadResponse(log, "배치 " + (start + 1) + "~" + end, text);
   }
 
   all.sort(function(a, b){ return (a.page || 0) - (b.page || 0); });
@@ -247,7 +266,7 @@ async function extractEulguData(apiKey, doc, pageNumbers, log){
     log("[추출성공] " + ((obj.mortgages || []).length) + "개 근저당권");
     return obj;
   }
-  log("[경고] JSON을 찾을 수 없음");
+  logBadResponse(log, "을구 추출", text);
   return {raw_response: text, error: "JSON parsing failed"};
 }
 
@@ -487,14 +506,27 @@ function recentMonths(n){
   return out;
 }
 
+/* data.go.kr 은 키를 두 형태로 준다.
+     Encoding 키: 이미 퍼센트 인코딩됨 (예: abc%2Bdef%3D)
+     Decoding 키: 원본 그대로   (예: abc+def=)
+   포털에서 먼저 보이는 건 Encoding 키라 대부분 그걸 복사한다. 거기에
+   encodeURIComponent 를 또 걸면 %2B 가 %252B 로 변해 키가 깨진다.
+   이미 인코딩된 키로 보이면 그대로 쓴다. */
+function encodeServiceKey(key){
+  return /%[0-9A-Fa-f]{2}/.test(key) ? key : encodeURIComponent(key);
+}
+
 async function rtmsFetchMonth(lawdCd, dealYmd, apiKey){
-  var url = RTMS + "?serviceKey=" + encodeURIComponent(apiKey) +
+  var url = RTMS + "?serviceKey=" + encodeServiceKey(apiKey) +
             "&LAWD_CD=" + encodeURIComponent(lawdCd) +
             "&DEAL_YMD=" + encodeURIComponent(dealYmd) +
             "&numOfRows=1000&pageNo=1";
   var res = await fetch(url);
   if (!res.ok) throw new Error("HTTP " + res.status);
-  var xml = new DOMParser().parseFromString(await res.text(), "application/xml");
+  var raw = await res.text();
+  var xml = new DOMParser().parseFromString(raw, "application/xml");
+  if (xml.querySelector("parsererror"))
+    throw new Error("응답을 XML 로 읽지 못했습니다: " + raw.slice(0, 200));
 
   var codeNode = xml.querySelector("resultCode");
   var code = codeNode ? codeNode.textContent.trim() : null;
@@ -514,37 +546,72 @@ async function rtmsFetchMonth(lawdCd, dealYmd, apiKey){
   }).filter(function(o){ return !o.cdealType; });   /* 해제(취소)된 거래 제외 */
 }
 
+/* 단지명 표기가 소스마다 다르다.
+   호갱노노 "극동2차"  vs  국토부 "극동" / "극동아파트" / "극동 2차"
+   원본(파이썬)은 단순 포함 비교라 위 조합이 서로 안 걸린다. 공백·"아파트"·
+   "N차" 를 걷어낸 형태로도 한 번 더 비교해 실제로 같은 단지를 놓치지 않게 한다. */
+function normalizeAptName(name){
+  return String(name || "")
+    .replace(/\s/g, "")
+    .replace(/아파트/g, "")
+    .replace(/\d+차$/, "");
+}
+function aptNameMatches(itemName, aptName){
+  if (!itemName || !aptName) return false;
+  if (itemName.indexOf(aptName) >= 0 || aptName.indexOf(itemName) >= 0) return true;  /* 원본과 동일 */
+  var a = normalizeAptName(itemName), b = normalizeAptName(aptName);
+  return !!(a && b && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0));
+}
+
 async function rtmsLookup(lawdCd, aptName, dong, areaSqm, monthsBack, apiKey, log){
   var tolerance = 3.0;
   var matches = [];
   var months = recentMonths(monthsBack || 3);
   var hadError = null;
+  var seenNames = {};      /* 왜 못 찾았는지 보여주기 위해 그 지역의 단지명을 모아둔다 */
+  var nameHits = 0, dongSkips = 0, areaSkips = 0;
 
   for (var i = 0; i < months.length; i++){
     var items;
     try{ items = await rtmsFetchMonth(lawdCd, months[i], apiKey); }
     catch(e){ log("[경고] " + months[i] + " 조회 실패: " + e.message); hadError = hadError || e; continue; }
+    log("  [국토부] " + months[i] + " · 거래 " + items.length + "건 수신");
 
     items.forEach(function(item){
       var itemName = item.aptNm || "";
-      if (!(itemName.indexOf(aptName) >= 0 || aptName.indexOf(itemName) >= 0)) return;
+      if (itemName) seenNames[itemName] = (seenNames[itemName] || 0) + 1;
+      if (!aptNameMatches(itemName, aptName)) return;
+      nameHits++;
       if (dong){
         /* aptDong 표기가 "106" / "106동" 으로 들쭉날쭉해 숫자만 비교 */
         var a = String(item.aptDong || "").replace(/\D/g, "");
         var b = String(dong).replace(/\D/g, "");
-        if (a && b && a !== b) return;
+        if (a && b && a !== b){ dongSkips++; return; }
       }
       if (areaSqm != null){
         var area = parseFloat(item.excluUseAr);
-        if (isNaN(area) || Math.abs(area - areaSqm) > tolerance) return;
+        if (isNaN(area) || Math.abs(area - areaSqm) > tolerance){ areaSkips++; return; }
       }
       matches.push(item);
     });
   }
 
   if (!matches.length){
-    return {error: hadError ? String(hadError.message) : "해당 기간/평형 내 거래 내역이 없습니다",
-            matches: [], average_price: null, trade_count: 0};
+    /* 왜 0건인지 구분해서 알려준다 — 키 문제 / 단지명 불일치 / 필터 과다 */
+    var reason;
+    if (hadError) reason = String(hadError.message);
+    else if (!nameHits){
+      var names = Object.keys(seenNames).sort(function(x, y){ return seenNames[y] - seenNames[x]; });
+      reason = '단지명 "' + aptName + '" 과 일치하는 거래가 없습니다' +
+               (names.length ? ' · 이 지역 단지: ' + names.slice(0, 8).join(", ") +
+                               (names.length > 8 ? " 외 " + (names.length - 8) + "개" : "")
+                             : " · 이 지역 거래 자체가 없습니다");
+    }else{
+      reason = "단지는 찾았으나 필터에 걸려 0건" +
+               (dongSkips ? " (동 불일치 " + dongSkips + "건)" : "") +
+               (areaSkips ? " (면적 불일치 " + areaSkips + "건)" : "");
+    }
+    return {error: reason, matches: [], average_price: null, trade_count: 0};
   }
 
   matches.sort(function(x, y){
@@ -745,7 +812,9 @@ async function runPipeline(opts){
 
 window.CollateralCore = {
   DEFAULT_HAMMER_RATE: DEFAULT_HAMMER_RATE,
-  MODEL_NAME: MODEL_NAME,
+  DEFAULT_MODEL: DEFAULT_MODEL,
+  getModel: function(){ return MODEL_NAME; },
+  setModel: function(m){ MODEL_NAME = (m || "").trim() || DEFAULT_MODEL; },
   runPipeline: runPipeline,
   matchHammerRate: matchHammerRate,
   extractBuildingDong: extractBuildingDong,
