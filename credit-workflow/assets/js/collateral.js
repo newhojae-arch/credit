@@ -149,8 +149,14 @@ function renderCollateralResult(data){
   tbody.innerHTML = '';
   (data.properties || []).forEach(p => {
     const tr = document.createElement('tr');
+    /* 어떤 근거로 이 요율이 나왔는지 드러낸다 — 지역·관할법원·물건유형 */
     const rateTxt = p.hammer_rate != null
-      ? Math.round(p.hammer_rate*100) + '%' + (p.matched_rate_region ? ' · ' + p.matched_rate_region : '')
+      ? Math.round(p.hammer_rate*100) + '%' +
+        (p.matched_rate_region
+          ? '<div class="muted">' + esc(p.matched_rate_region) +
+            (p.matched_rate_court ? ' · ' + esc(p.matched_rate_court) : '') +
+            (p.property_type ? ' · ' + esc(p.property_type) : '') + '</div>'
+          : '<div class="muted">기준표 미매칭 · 기본값</div>')
       : '—';
     tr.innerHTML =
       '<td>' + esc(p.address || '주소 미상') + (p.error ? '<div class="muted">' + esc(p.error) + '</div>' : '') + '</td>' +
@@ -227,8 +233,10 @@ async function evaluateCollateral(){
     logLine('[준비] PDF ' + doc.numPages + '페이지');
 
     logLine('[준비] Gemini 모델: ' + window.CollateralCore.getModel());
-    const rateTable = window.HAMMER_RATE_TABLE || null;
-    if (rateTable) logLine('[준비] 낙찰가율 기준표 ' + rateTable.length + '개 항목');
+    const rates = window.HAMMER_RATES || null;
+    const rateTable = rates ? rates.entries : null;
+    const propertyType = $('i_property_type') ? $('i_property_type').value : '아파트';
+    if (rateTable) logLine('[준비] 낙찰가율 기준표 ' + rateTable.length + '개 항목 · 유형: ' + propertyType);
 
     const data = await window.CollateralCore.runPipeline({
       pdfDoc: doc,
@@ -236,6 +244,7 @@ async function evaluateCollateral(){
       molitKey: keys.molit || null,
       hammerRate: (Number($('i_collateral_rate').value) || 80) / 100,
       rateTable: rateTable,
+      propertyType: propertyType,
       log: logLine
     });
 
@@ -330,6 +339,25 @@ if ($('btn_clear_keys')) $('btn_clear_keys').addEventListener('click', () => {
   syncKeyFields();
   flag('<div class="callout">저장된 API 키를 지웠습니다.</div>');
 });
+
+/* ── 부동산 유형 드롭다운 ──
+   기준표에 있는 유형(아파트·단독·다가구·다세대/빌라·대지·임야·전/답·상가·
+   오피스텔·근린시설)을 그대로 채운다. 선택은 이 브라우저에 기억한다. */
+const TYPE_STORE = 'yeosin.propertyType';
+(function(){
+  const sel = $('i_property_type');
+  const rates = window.HAMMER_RATES;
+  if (!sel || !rates) return;
+  const saved = storage.get(TYPE_STORE, '아파트');
+  rates.types.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t;
+    if (t === saved) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!rates.types.includes(saved)) sel.value = '아파트';
+  sel.addEventListener('change', () => storage.set(TYPE_STORE, sel.value));
+})();
 
 syncKeyFields();
 })();

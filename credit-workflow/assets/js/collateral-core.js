@@ -674,31 +674,73 @@ function extractBuildingDong(address){
   return m ? m[1] : null;
 }
 
+/* 기준표의 구분(시·도) 표기 → 실제 주소에 쓰이는 표기.
+   주소는 "경상남도"처럼 풀네임이라 "경남" 으로는 안 걸린다. */
+var PROVINCE_ALIASES = {
+  "서울": ["서울"], "경기": ["경기"], "인천": ["인천"], "강원": ["강원"],
+  "충청": ["충청", "충북", "충남"], "대전": ["대전"], "세종": ["세종"],
+  "전북": ["전북", "전라북"], "전남": ["전남", "전라남"], "광주": ["광주"],
+  "경북": ["경북", "경상북"], "경남": ["경남", "경상남"],
+  "대구": ["대구"], "부산": ["부산"], "울산": ["울산"], "제주": ["제주"]
+};
+
+/* 주소 맨 앞의 시·도를 뽑는다.
+   "경기도 광주시…" → "경기도"   /   "광주광역시 서구…" → "광주광역시"
+   이게 핵심이다. 주소 전체에서 찾으면 "경기도 광주시" 가 광주광역시 항목에도
+   걸려버린다(둘 다 "광주" 를 포함하므로). 맨 앞만 보면 정확히 갈린다. */
+function addressProvince(address){
+  var m = /^\s*([가-힣]+(?:특별자치시|특별자치도|광역시|특별시|북도|남도|도))/.exec(String(address || ""));
+  return m ? m[1] : null;
+}
+function provinceMatches(entryProvince, addrProvince, normalizedAddress){
+  if (!entryProvince) return false;
+  var aliases = PROVINCE_ALIASES[entryProvince] || [entryProvince];
+  var hay = addrProvince || normalizedAddress;   /* 앞머리를 못 뽑으면 주소 전체로 폴백 */
+  return aliases.some(function(a){ return hay.indexOf(a) >= 0; });
+}
+
 /* keywords 전부가 주소에 들어있어야 매칭(AND).
-   여러 개 맞으면 (키워드 개수, 총 글자수) 가 큰 쪽 = 더 구체적인 것을 택한다. */
-function matchHammerRate(address, rateTable, defaultRate){
+   여러 개 맞으면 아래 순서로 가장 구체적인 것을 택한다:
+     ① 시·도 일치 — 같은 지명이 여러 시·도에 있을 때 이것이 결정적이다
+        (광주광역시 vs 경기도 광주시, 강원 고성 vs 경남 고성)
+     ② 키워드 개수 (대구+서구 > 대구)
+     ③ 총 글자수 (남양주 > 양주)
+   propertyType 이 주어지면 그 유형의 요율을, 없으면 "아파트" 를 쓴다. */
+function matchHammerRate(address, rateTable, defaultRate, propertyType){
   defaultRate = defaultRate == null ? DEFAULT_HAMMER_RATE : defaultRate;
+  propertyType = propertyType || "아파트";
   if (!address || !rateTable || !rateTable.length) return {rate: defaultRate, region: null};
 
   var normalized = String(address).replace(/\s/g, "");
+  var addrProv = addressProvince(address);
   var candidates = [];
+
   rateTable.forEach(function(entry){
     var keywords = (entry.keywords || [entry.region]).filter(Boolean);
     if (!keywords.length) return;
-    var all = keywords.every(function(k){ return normalized.indexOf(k) >= 0; });
-    if (!all) return;
+    if (!keywords.every(function(k){ return normalized.indexOf(k) >= 0; })) return;
+
+    /* rates 가 있으면 유형별, 없으면(구형 데이터) entry.rate */
+    var rate = entry.rates ? entry.rates[propertyType] : entry.rate;
+    if (rate == null && entry.rates) rate = entry.rates["아파트"];
+    if (rate == null) return;
+
     candidates.push({
+      provinceHit: provinceMatches(entry.province, addrProv, normalized) ? 1 : 0,
       specificity: keywords.length,
       totalLen: keywords.reduce(function(a, k){ return a + k.length; }, 0),
-      keywords: keywords, rate: entry.rate
+      keywords: keywords, rate: rate, court: entry.court, province: entry.province
     });
   });
   if (!candidates.length) return {rate: defaultRate, region: null};
 
   candidates.sort(function(a, b){
-    return (b.specificity - a.specificity) || (b.totalLen - a.totalLen);
+    return (b.provinceHit - a.provinceHit) ||
+           (b.specificity - a.specificity) ||
+           (b.totalLen - a.totalLen);
   });
-  return {rate: candidates[0].rate, region: candidates[0].keywords.join("+")};
+  var best = candidates[0];
+  return {rate: best.rate, region: best.keywords.join("+"), court: best.court, province: best.province};
 }
 
 /* ═══════════════════ 8. 전체 파이프라인 ═══════════════════ */
@@ -708,6 +750,7 @@ async function runPipeline(opts){
   var geminiKey = opts.geminiKey, molitKey = opts.molitKey;
   var hammerRate = opts.hammerRate == null ? DEFAULT_HAMMER_RATE : opts.hammerRate;
   var rateTable = opts.rateTable || null;
+  var propertyType = opts.propertyType || "아파트";
 
   log("=".repeat(60));
   log("[1단계] 등기부등본 분석 (물건지 자동 감지 + 선순위 계산)");
@@ -730,7 +773,7 @@ async function runPipeline(opts){
     var priorityAmount = calc.total_priority_amount;
     log("  선순위: " + priorityAmount.toLocaleString("ko-KR") + "원");
 
-    var matched = matchHammerRate(prop.address, rateTable, hammerRate);
+    var matched = matchHammerRate(prop.address, rateTable, hammerRate, propertyType);
     var appliedRate = matched.rate;
 
     log("");
@@ -738,14 +781,18 @@ async function runPipeline(opts){
         (prop.area_sqm ? " (전용 " + prop.area_sqm + "㎡)" : " (전용면적 정보 없음)"));
     if (rateTable){
       log(matched.region
-        ? "  [낙찰가율 매칭] '" + matched.region + "' 기준 → " + Math.round(appliedRate * 100) + "%"
+        ? "  [낙찰가율 매칭] '" + matched.region + "' (" + (matched.province || "") +
+          " · " + (matched.court || "") + ") · " + propertyType + " → " + Math.round(appliedRate * 100) + "%"
         : "  [낙찰가율 매칭] 기준표에 일치하는 지역 없음 → 기본값 " + Math.round(appliedRate * 100) + "% 적용");
     }
 
     var base = Object.assign({}, prop, calc, {
       property_index: i + 1,
       hammer_rate: appliedRate,
-      matched_rate_region: matched.region
+      matched_rate_region: matched.region,
+      matched_rate_court: matched.court,
+      matched_rate_province: matched.province,
+      property_type: propertyType
     });
 
     if (!prop.address){
