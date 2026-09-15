@@ -16,10 +16,27 @@ const setSt=(id,state,txt)=>setStatus(id,state,txt);
 const API_BASE='http://localhost:8000';
 let COLLATERAL_RESULT=null;
 
-if($('f_collateral_pdf'))$('f_collateral_pdf').addEventListener('change',e=>{
-  const f=e.target.files&&e.target.files[0];
-  $('f_collateral_pdf_got').textContent=f?(f.name+' · '+Math.round(f.size/1024)+' KB'):'';
-});
+(function(){
+  const drop=$('collateralDrop'), input=$('f_collateral_pdf'), hint=$('f_collateral_pdf_got');
+  if(!drop||!input)return;
+  const DEFAULT_HINT='클릭해서 파일을 고를 수도 있습니다';
+  function show(f){ hint.textContent=f?(f.name+' · '+Math.round(f.size/1024)+' KB'):DEFAULT_HINT; }
+  function setFile(f){
+    if(!f)return;
+    const dt=new DataTransfer(); dt.items.add(f);
+    input.files=dt.files;
+    show(f);
+  }
+  input.addEventListener('change',e=>show(e.target.files&&e.target.files[0]));
+  drop.addEventListener('click',()=>input.click());
+  drop.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); input.click(); } });
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.add('is-over'); }));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{ e.preventDefault(); drop.classList.remove('is-over'); }));
+  drop.addEventListener('drop',e=>{
+    const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(f)setFile(f);
+  });
+})();
 
 function fmtTradeDate(y,m,d){
   if(y&&m&&d)return y+'.'+String(m).padStart(2,'0')+'.'+String(d).padStart(2,'0');
