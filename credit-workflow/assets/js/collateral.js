@@ -12,8 +12,33 @@
 const {$, el, esc, fmtInt: W, fmtEok: formatEok, parseNum: num, setStatus, storage} = App;
 const setSt=(id,state,txt)=>setStatus(id,state,txt);
 
-/* 개발 기본값. streamlit-app/api_server.py 를 로컬에서 uvicorn으로 띄운 주소. */
-const API_BASE='http://localhost:8000';
+/* ── 백엔드 주소 ──────────────────────────────────────────────
+   기본값은 streamlit-app/api_server.py 를 로컬 uvicorn 으로 띄운 주소.
+   ?api=https://... 로 덮어쓸 수 있고, 한 번 주면 이 브라우저에 기억한다.
+   배포본에서 원격 백엔드를 쓰려면 이 방법으로 지정한다. */
+const API_KEY='yeosin.apiBase';
+const API_DEFAULT='http://localhost:8000';
+function resolveApiBase(){
+  const q=new URLSearchParams(location.search).get('api');
+  if(q!==null){
+    /* ?api= (빈 값) 은 덮어쓰기 해제 */
+    try{ q ? localStorage.setItem(API_KEY,q) : localStorage.removeItem(API_KEY); }catch(e){}
+    if(q) return q.replace(/\/+$/,'');
+    return API_DEFAULT;
+  }
+  try{ const saved=localStorage.getItem(API_KEY); if(saved) return saved.replace(/\/+$/,''); }catch(e){}
+  return API_DEFAULT;
+}
+const API_BASE=resolveApiBase();
+
+/* HTTPS 로 열린 페이지에서 http:// 백엔드를 부르면 브라우저가 요청 자체를 막는다
+   (혼합 콘텐츠). 배포본 + 로컬 백엔드 조합이 정확히 여기 걸린다.
+   보내봐야 "Failed to fetch" 밖에 안 나오므로, 쏘기 전에 미리 판단한다. */
+function mixedContentBlocked(){
+  return location.protocol==='https:' && /^http:\/\//i.test(API_BASE);
+}
+function flag(html){ $('collateral_flag').innerHTML=html; }
+
 let COLLATERAL_RESULT=null;
 
 (function(){
@@ -105,6 +130,20 @@ async function evaluateCollateral(){
   const f=$('f_collateral_pdf').files&&$('f_collateral_pdf').files[0];
   if(!f){setSt('st_collateral','off','PDF를 업로드하십시오');return}
 
+  if(mixedContentBlocked()){
+    setSt('st_collateral','off','배포본에서는 로컬 백엔드를 부를 수 없음');
+    flag('<div class="callout callout--warn">'+
+      '<b>이 화면은 배포본에서 동작하지 않습니다.</b><br>'+
+      '지금 페이지는 <span class="mono">https</span> 로 열려 있는데 백엔드 주소가 '+
+      '<span class="mono">'+esc(API_BASE)+'</span> 라서, 브라우저가 요청을 차단합니다.<br><br>'+
+      '<b>해결 방법</b><br>'+
+      '· 로컬에서 쓰기 — 저장소를 받아 <span class="mono">credit-workflow/index.html</span> 을 직접 열고 백엔드를 띄웁니다.<br>'+
+      '· 원격 백엔드 쓰기 — <span class="mono">https</span> 로 서비스되는 주소가 있다면 '+
+      '<span class="mono">?api=https://주소</span> 를 URL 뒤에 붙이면 그 주소로 호출합니다.'+
+      '</div>');
+    return;
+  }
+
   setSt('st_collateral','run','평가 중… (물건지 감지 · 실거래가 조회)');
   $('btn_collateral_report').disabled=true;
   $('collateral_flag').innerHTML='';
@@ -123,8 +162,27 @@ async function evaluateCollateral(){
     $('btn_collateral_report').disabled=false;
   }catch(err){
     setSt('st_collateral','off','평가 실패');
-    $('collateral_flag').innerHTML='<div class="callout callout--warn"><b>담보가치 평가 실패.</b> '+
-      (err&&err.message?err.message:'백엔드 API('+API_BASE+') 연결을 확인하십시오')+'</div>';
+    /* fetch 가 TypeError 로 떨어지면 서버에 닿지도 못한 것이다(미기동·CORS·네트워크).
+       서버가 응답은 했는데 실패한 경우와 구분해서 안내한다. */
+    const unreachable = err instanceof TypeError;
+    if(unreachable){
+      const isLocal=/^https?:\/\/(localhost|127\.0\.0\.1)(:|$)/i.test(API_BASE);
+      flag('<div class="callout callout--warn">'+
+        '<b>백엔드에 연결하지 못했습니다.</b> '+
+        '<span class="mono">'+esc(API_BASE)+'</span> 가 응답하지 않습니다.<br><br>'+
+        (isLocal
+          ? '<b>백엔드 실행</b><br>'+
+            '<span class="mono">cd streamlit-app</span><br>'+
+            '<span class="mono">uvicorn api_server:app --port 8000</span><br><br>'+
+            '띄운 뒤 «담보가치 평가 실행» 을 다시 누르십시오.'
+          : '주소가 맞는지, 그리고 그 서버가 이 페이지의 요청을 허용(CORS)하는지 확인하십시오.<br>'+
+            'URL 뒤에 <span class="mono">?api=</span> 만 붙이면 기본값 '+
+            '<span class="mono">'+esc(API_DEFAULT)+'</span> 로 되돌립니다.')+
+        '</div>');
+    }else{
+      flag('<div class="callout callout--crit"><b>담보가치 평가 실패.</b> '+
+        esc(err&&err.message?err.message:'알 수 없는 오류')+'</div>');
+    }
   }
 }
 
@@ -144,8 +202,8 @@ async function downloadCollateralReport(){
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }catch(err){
-    $('collateral_flag').innerHTML='<div class="callout callout--warn"><b>리포트 생성 실패.</b> '+
-      (err&&err.message?err.message:'')+'</div>';
+    flag('<div class="callout callout--warn"><b>리포트 생성 실패.</b> '+
+      esc(err&&err.message?err.message:'')+'</div>');
   }
 }
 
